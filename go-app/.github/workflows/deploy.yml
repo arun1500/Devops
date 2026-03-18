@@ -1,9 +1,5 @@
 name: ci/cd
 
-on: 
-push:
-branches: ["main"]
-
 env:
 image1: ghcr,io/$
 {{github.reposity_owner }}/go-app
