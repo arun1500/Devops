@@ -1,76 +1,50 @@
 pipeline {
-
     agent any
 
     environment {
-        NETWORK = "taskflow-network"
-
-        DB_NAME = "taskapp"
-        DB_USER = "taskuser"
-        DB_CONTAINER = "taskflow-db"
-        DB_IMAGE = "taskflow-db:latest"
-        DB_VOLUME = "taskflow-db-data"
-
-        BACKEND_CONTAINER = "taskflow-backend"
-        BACKEND_IMAGE = "taskflow-backend:latest"
-
-        FRONTEND_CONTAINER = "taskflow-frontend"
-        FRONTEND_IMAGE = "taskflow-frontend:latest"
+        NETWORK  = "taskflow-network"
+        DB_NAME  = "taskapp"
+        DB_USER  = "taskuser"
     }
 
     stages {
-
         stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Database') {
             steps {
-                checkout scm
+                withCredentials([string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')]) {
+                    sh '''
+                        docker build -t taskflow-db:latest ./taskapp/db
+                        docker rm -f taskflow-db 2>/dev/null || true
+
+                        docker run -d --name taskflow-db --network ${NETWORK} \
+                            -e POSTGRES_DB=${DB_NAME} \
+                            -e POSTGRES_USER=${DB_USER} \
+                            -e POSTGRES_PASSWORD="$DB_PASSWORD" \
+                            -v taskflow-db-data:/var/lib/postgresql \
+                            taskflow-db:latest
+                    '''
+                }
             }
         }
 
-stage('Database') {
-    steps {
-        withCredentials([
-            string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')
-        ]) {
-            sh '''
-                docker rm -f ${DB_CONTAINER} 2>/dev/null || true
-                docker volume rm ${DB_VOLUME} 2>/dev/null || true
-                docker rmi ${DB_IMAGE} 2>/dev/null || true
-
-                docker build -t ${DB_IMAGE} ./taskapp/db
-
-                docker run -d \
-                    --name ${DB_CONTAINER} \
-                    --network ${NETWORK} \
-                    -e POSTGRES_DB=${DB_NAME} \
-                    -e POSTGRES_USER=${DB_USER} \
-                    -e POSTGRES_PASSWORD="$DB_PASSWORD" \
-                    -v ${DB_VOLUME}:/var/lib/postgresql \
-                    ${DB_IMAGE}
-            '''
-        }
-    }
-}
-
         stage('Backend') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')
-                ]) {
+                withCredentials([string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')]) {
                     sh '''
-                        docker build -t ${BACKEND_IMAGE} ./taskapp/backend
-                        docker rm -f ${BACKEND_CONTAINER} 2>/dev/null || true
+                        docker build -t taskflow-backend:latest ./taskapp/backend
+                        docker rm -f taskflow-backend 2>/dev/null || true
 
-                        docker run -d \
-                            --name ${BACKEND_CONTAINER} \
-                            --network ${NETWORK} \
-                            -p 4000:4000 \
+                        docker run -d --name taskflow-backend --network ${NETWORK} -p 4000:4000 \
                             -e PORT=4000 \
-                            -e DB_HOST=${DB_CONTAINER} \
+                            -e DB_HOST=taskflow-db \
                             -e DB_PORT=5432 \
                             -e DB_NAME=${DB_NAME} \
                             -e DB_USER=${DB_USER} \
                             -e DB_PASSWORD="$DB_PASSWORD" \
-                            ${BACKEND_IMAGE}
+                            taskflow-backend:latest
                     '''
                 }
             }
@@ -79,13 +53,10 @@ stage('Database') {
         stage('Frontend') {
             steps {
                 sh '''
-                    docker build -t ${FRONTEND_IMAGE} ./taskapp/frontend
-                    docker rm -f ${FRONTEND_CONTAINER} 2>/dev/null || true
+                    docker build -t taskflow-frontend:latest ./taskapp/frontend
+                    docker rm -f taskflow-frontend 2>/dev/null || true
 
-                    docker run -d \
-                        --name ${FRONTEND_CONTAINER} \
-                        -p 3000:80 \
-                        ${FRONTEND_IMAGE}
+                    docker run -d --name taskflow-frontend -p 3000:80 taskflow-frontend:latest
                 '''
             }
         }
