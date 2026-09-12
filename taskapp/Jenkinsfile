@@ -61,6 +61,13 @@ pipeline {
 
         stage('Start Backend') {
             steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'taskflow-db-password',
+                        variable: 'DB_PASSWORD'
+                    )
+                ])             
+            steps {
                 sh '''
                     docker build \
                         -t ${BACKEND_IMAGE} \
