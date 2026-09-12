@@ -99,28 +99,44 @@ pipeline {
         // --------------------------------------------------
 
         stage('Start PostgreSQL') {
-            steps {
+    steps {
 
-                withCredentials([
-                    string(
-                        credentialsId: 'taskflow-db-password',
-                        variable: 'DB_PASSWORD'
-                    )
-                ]) {
-                    sh '''
-                        echo "Starting PostgreSQL..."
+        withCredentials([
+            string(
+                credentialsId: 'taskflow-db-password',
+                variable: 'DB_PASSWORD'
+            )
+        ]) {
 
-                        docker run -d \
-                            --name ${DB_CONTAINER} \
-                            --network ${NETWORK_NAME} \
-                            -e POSTGRES_DB=${DB_NAME} \
-                            -e POSTGRES_USER=${DB_USER} \
-                            -e POSTGRES_PASSWORD="$DB_PASSWORD" \
-                            -v ${DB_VOLUME}:/var/lib/postgresql \
-                            ${DB_IMAGE}
-                    '''
-                }
-            }
+            sh '''
+                echo "Starting PostgreSQL..."
+
+                if docker ps -a --format '{{.Names}}' | grep -q "^${DB_CONTAINER}$"; then
+
+                    echo "PostgreSQL container already exists."
+
+                    if docker ps --format '{{.Names}}' | grep -q "^${DB_CONTAINER}$"; then
+                        echo "PostgreSQL is already running."
+                    else
+                        echo "Starting existing PostgreSQL container..."
+                        docker start ${DB_CONTAINER}
+                    fi
+
+                else
+
+                    echo "Creating PostgreSQL container..."
+
+                    docker run -d \
+                        --name ${DB_CONTAINER} \
+                        --network ${NETWORK_NAME} \
+                        -e POSTGRES_DB=${DB_NAME} \
+                        -e POSTGRES_USER=${DB_USER} \
+                        -e POSTGRES_PASSWORD="$DB_PASSWORD" \
+                        -v ${DB_VOLUME}:/var/lib/postgresql \
+                        ${DB_IMAGE}
+
+                fi
+            '''
         }
     }
 }
