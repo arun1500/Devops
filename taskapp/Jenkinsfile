@@ -46,7 +46,7 @@ pipeline {
 
                     docker build \
                         -t ${FRONTEND_IMAGE} \
-                        ./frontend
+                        ./taskapp/frontend
 
                     docker rm -f ${FRONTEND_CONTAINER} 2>/dev/null || true
 
@@ -64,7 +64,7 @@ pipeline {
                 sh '''
                     docker build \
                         -t ${BACKEND_IMAGE} \
-                        ./backend
+                        ./taskapp/backend
 
                     docker rm -f ${BACKEND_CONTAINER} 2>/dev/null || true
 
@@ -88,7 +88,7 @@ pipeline {
 
                     docker build \
                         -t ${DB_IMAGE} \
-                        ./database
+                        ./taskapp/db    
                 '''
             }
         }
