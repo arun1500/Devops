@@ -69,9 +69,16 @@ pipeline {
                     docker rm -f ${BACKEND_CONTAINER} 2>/dev/null || true
 
                     docker run -d \
-                        --name ${BACKEND_CONTAINER} \
-                        -p ${BACKEND_PORT}:4000 \
-                        ${BACKEND_IMAGE}
+    --name ${BACKEND_CONTAINER} \
+    --network ${NETWORK_NAME} \
+    -p ${BACKEND_PORT}:4000 \
+    -e PORT=4000 \
+    -e DB_HOST=${DB_CONTAINER} \
+    -e DB_PORT=5432 \
+    -e DB_NAME=${DB_NAME} \
+    -e DB_USER=${DB_USER} \
+    -e DB_PASSWORD="$DB_PASSWORD" \
+    ${BACKEND_IMAGE}
                 '''
             }
         }
