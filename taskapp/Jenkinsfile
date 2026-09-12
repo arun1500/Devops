@@ -3,8 +3,10 @@ pipeline {
     agent any
 
     environment {
-        NETWORK_NAME = "taskflow-network"
+        NETWORK = "taskflow-network"
 
+        DB_NAME = "taskapp"
+        DB_USER = "taskuser"
         DB_CONTAINER = "taskflow-db"
         DB_IMAGE = "taskflow-db:latest"
         DB_VOLUME = "taskflow-db-data"
@@ -14,144 +16,78 @@ pipeline {
 
         FRONTEND_CONTAINER = "taskflow-frontend"
         FRONTEND_IMAGE = "taskflow-frontend:latest"
-
-        DB_NAME = "taskapp"
-        DB_USER = "taskuser"
-
-        BACKEND_PORT = "4000"
-        FRONTEND_PORT = "3000"
     }
 
     stages {
-
-        // --------------------------------------------------
-        // 1. CHECKOUT
-        // --------------------------------------------------
 
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
-        
-        
-        // --------------------------------------------------
-        // 10. BUILD FRONTEND
-        // --------------------------------------------------
 
-        stage('Build Frontend Image') {
-            steps {
-                sh '''
-                    echo "Building frontend image..."
-
-                    docker build \
-                        -t ${FRONTEND_IMAGE} \
-                        ./taskapp/frontend
-
-                    docker rm -f ${FRONTEND_CONTAINER} 2>/dev/null || true
-
-                    docker run -d \
-                        --name ${FRONTEND_CONTAINER} \
-                        -p ${FRONTEND_PORT}:80 \
-                        ${FRONTEND_IMAGE}
-                '''
-            }
-        }
-
-
-stage('Start Backend') {
-    steps {
-        withCredentials([
-            string(
-                credentialsId: 'taskflow-db-password',
-                variable: 'DB_PASSWORD'
-            )
-        ]) {
-            sh '''
-                docker build \
-                    -t ${BACKEND_IMAGE} \
-                    ./taskapp/backend
-
-                docker rm -f ${BACKEND_CONTAINER} 2>/dev/null || true
-
-                docker run -d \
-                    --name ${BACKEND_CONTAINER} \
-                    --network ${NETWORK_NAME} \
-                    -p ${BACKEND_PORT}:4000 \
-                    -e PORT=4000 \
-                    -e DB_HOST=${DB_CONTAINER} \
-                    -e DB_PORT=5432 \
-                    -e DB_NAME=${DB_NAME} \
-                    -e DB_USER=${DB_USER} \
-                    -e DB_PASSWORD="$DB_PASSWORD" \
-                    ${BACKEND_IMAGE}
-            '''
-        }
-    }
-}
-
-
-        // --------------------------------------------------
-        // BUILD DATABASE IMAGE
-        // --------------------------------------------------
-
-        stage('Build Database Image') {
-            steps {
-                sh '''
-                    echo "Building PostgreSQL image..."
-
-                    docker build \
-                        -t ${DB_IMAGE} \
-                        ./taskapp/db    
-                '''
-            }
-        }
-
-
-        // --------------------------------------------------
-        // 4. START DATABASE
-        // --------------------------------------------------
-
-        stage('Start PostgreSQL') {
+        stage('Database') {
             steps {
                 withCredentials([
-                    string(
-                        credentialsId: 'taskflow-db-password',
-                        variable: 'DB_PASSWORD'
-                    )
+                    string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')
                 ]) {
                     sh '''
-                        echo "Starting PostgreSQL..."
+                        docker build -t ${DB_IMAGE} ./taskapp/db
 
                         if docker ps -a --format '{{.Names}}' | grep -q "^${DB_CONTAINER}$"; then
-
-                            echo "PostgreSQL container already exists."
-
-                            if docker ps --format '{{.Names}}' | grep -q "^${DB_CONTAINER}$"; then
-                                echo "PostgreSQL is already running."
-                            else
-                                echo "Starting existing PostgreSQL container..."
-                                docker start ${DB_CONTAINER}
-                            fi
-
+                            docker start ${DB_CONTAINER} 2>/dev/null || true
                         else
-
-                            echo "Creating PostgreSQL container..."
-
                             docker run -d \
                                 --name ${DB_CONTAINER} \
-                                --network ${NETWORK_NAME} \
+                                --network ${NETWORK} \
                                 -e POSTGRES_DB=${DB_NAME} \
                                 -e POSTGRES_USER=${DB_USER} \
                                 -e POSTGRES_PASSWORD="$DB_PASSWORD" \
                                 -v ${DB_VOLUME}:/var/lib/postgresql \
                                 ${DB_IMAGE}
-
                         fi
                     '''
                 }
             }
         }
 
+        stage('Backend') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')
+                ]) {
+                    sh '''
+                        docker build -t ${BACKEND_IMAGE} ./taskapp/backend
+                        docker rm -f ${BACKEND_CONTAINER} 2>/dev/null || true
+
+                        docker run -d \
+                            --name ${BACKEND_CONTAINER} \
+                            --network ${NETWORK} \
+                            -p 4000:4000 \
+                            -e PORT=4000 \
+                            -e DB_HOST=${DB_CONTAINER} \
+                            -e DB_PORT=5432 \
+                            -e DB_NAME=${DB_NAME} \
+                            -e DB_USER=${DB_USER} \
+                            -e DB_PASSWORD="$DB_PASSWORD" \
+                            ${BACKEND_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('Frontend') {
+            steps {
+                sh '''
+                    docker build -t ${FRONTEND_IMAGE} ./taskapp/frontend
+                    docker rm -f ${FRONTEND_CONTAINER} 2>/dev/null || true
+
+                    docker run -d \
+                        --name ${FRONTEND_CONTAINER} \
+                        -p 3000:80 \
+                        ${FRONTEND_IMAGE}
+                '''
+            }
+        }
     }
 }
