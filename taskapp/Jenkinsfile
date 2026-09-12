@@ -66,9 +66,8 @@ pipeline {
                         credentialsId: 'taskflow-db-password',
                         variable: 'DB_PASSWORD'
                     )
-                ])             
-            steps {
-                sh '''
+                ]) {
+                    sh '''
                     docker build \
                         -t ${BACKEND_IMAGE} \
                         ./taskapp/backend
