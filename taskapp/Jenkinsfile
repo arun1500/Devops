@@ -26,30 +26,30 @@ pipeline {
             }
         }
 
-        stage('Database') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')
-                ]) {
-                    sh '''
-                        docker build -t ${DB_IMAGE} ./taskapp/db
+stage('Database') {
+    steps {
+        withCredentials([
+            string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')
+        ]) {
+            sh '''
+                docker rm -f ${DB_CONTAINER} 2>/dev/null || true
+                docker volume rm ${DB_VOLUME} 2>/dev/null || true
+                docker rmi ${DB_IMAGE} 2>/dev/null || true
 
-                        if docker ps -a --format '{{.Names}}' | grep -q "^${DB_CONTAINER}$"; then
-                            docker start ${DB_CONTAINER} 2>/dev/null || true
-                        else
-                            docker run -d \
-                                --name ${DB_CONTAINER} \
-                                --network ${NETWORK} \
-                                -e POSTGRES_DB=${DB_NAME} \
-                                -e POSTGRES_USER=${DB_USER} \
-                                -e POSTGRES_PASSWORD="$DB_PASSWORD" \
-                                -v ${DB_VOLUME}:/var/lib/postgresql \
-                                ${DB_IMAGE}
-                        fi
-                    '''
-                }
-            }
+                docker build -t ${DB_IMAGE} ./taskapp/db
+
+                docker run -d \
+                    --name ${DB_CONTAINER} \
+                    --network ${NETWORK} \
+                    -e POSTGRES_DB=${DB_NAME} \
+                    -e POSTGRES_USER=${DB_USER} \
+                    -e POSTGRES_PASSWORD="$DB_PASSWORD" \
+                    -v ${DB_VOLUME}:/var/lib/postgresql \
+                    ${DB_IMAGE}
+            '''
         }
+    }
+}
 
         stage('Backend') {
             steps {
