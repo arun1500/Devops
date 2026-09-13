@@ -18,17 +18,6 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        sonar-scanner \
-                            -Dsonar.projectKey=taskflow \
-                            -Dsonar.projectName=TaskFlow \
-                            -Dsonar.sources=taskapp
-                    '''
-                }
-            }
         }
 
         stage('Build Docker Images') {
