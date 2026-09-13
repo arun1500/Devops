@@ -4,27 +4,77 @@ pipeline {
     environment {
         NETWORK  = "taskflow-network"
         DB_NAME  = "taskapp"
-        DB_USER  = "taskuser"
+
+        DB_IMAGE       = "taskflow-db:latest"
+        BACKEND_IMAGE  = "taskflow-backend:latest"
+        FRONTEND_IMAGE = "taskflow-frontend:latest"
     }
 
     stages {
+
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        sonar-scanner \
+                            -Dsonar.projectKey=taskflow \
+                            -Dsonar.projectName=TaskFlow \
+                            -Dsonar.sources=taskapp
+                    '''
+                }
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                sh '''
+                    docker build -t ${DB_IMAGE} ./taskapp/db
+                    docker build -t ${BACKEND_IMAGE} ./taskapp/backend
+                    docker build -t ${FRONTEND_IMAGE} ./taskapp/frontend
+                '''
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                sh '''
+                    echo "Scanning Database image..."
+                    trivy image ${DB_IMAGE}
+
+                    echo "Scanning Backend image..."
+                    trivy image ${BACKEND_IMAGE}
+
+                    echo "Scanning Frontend image..."
+                    trivy image ${FRONTEND_IMAGE}
+                '''
+            }
         }
 
         stage('Database') {
             steps {
-                withCredentials([string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')]) {
+                withCredentials([
+                    string(
+                        credentialsId: 'taskflow-db-password',
+                        variable: 'DB_PASSWORD'
+                    )
+                ]) {
                     sh '''
-                        docker build -t taskflow-db:latest ./taskapp/db
                         docker rm -f taskflow-db 2>/dev/null || true
 
-                        docker run -d --name taskflow-db --network ${NETWORK} \
+                        docker run -d \
+                            --name taskflow-db \
+                            --network ${NETWORK} \
                             -e POSTGRES_DB=${DB_NAME} \
-                            -e POSTGRES_USER=${DB_USER} \
+                            -e POSTGRES_USER=taskuser \
                             -e POSTGRES_PASSWORD="$DB_PASSWORD" \
                             -v taskflow-db-data:/var/lib/postgresql \
-                            taskflow-db:latest
+                            ${DB_IMAGE}
                     '''
                 }
             }
@@ -32,19 +82,26 @@ pipeline {
 
         stage('Backend') {
             steps {
-                withCredentials([string(credentialsId: 'taskflow-db-password', variable: 'DB_PASSWORD')]) {
+                withCredentials([
+                    string(
+                        credentialsId: 'taskflow-db-password',
+                        variable: 'DB_PASSWORD'
+                    )
+                ]) {
                     sh '''
-                        docker build -t taskflow-backend:latest ./taskapp/backend
                         docker rm -f taskflow-backend 2>/dev/null || true
 
-                        docker run -d --name taskflow-backend --network ${NETWORK} -p 4000:4000 \
+                        docker run -d \
+                            --name taskflow-backend \
+                            --network ${NETWORK} \
+                            -p 4000:4000 \
                             -e PORT=4000 \
                             -e DB_HOST=taskflow-db \
                             -e DB_PORT=5432 \
                             -e DB_NAME=${DB_NAME} \
-                            -e DB_USER=${DB_USER} \
+                            -e DB_USER=taskuser \
                             -e DB_PASSWORD="$DB_PASSWORD" \
-                            taskflow-backend:latest
+                            ${BACKEND_IMAGE}
                     '''
                 }
             }
@@ -53,10 +110,12 @@ pipeline {
         stage('Frontend') {
             steps {
                 sh '''
-                    docker build -t taskflow-frontend:latest ./taskapp/frontend
                     docker rm -f taskflow-frontend 2>/dev/null || true
 
-                    docker run -d --name taskflow-frontend -p 3000:80 taskflow-frontend:latest
+                    docker run -d \
+                        --name taskflow-frontend \
+                        -p 3000:80 \
+                        ${FRONTEND_IMAGE}
                 '''
             }
         }
