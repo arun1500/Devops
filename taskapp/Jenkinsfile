@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -9,7 +10,29 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                checkout scm
+            }
+        }
+
+        // SONARQUBE ANALYSIS
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    def scannerHome = tool 'SonarScanner'
+
+                    withSonarQubeEnv('SonarQube') {
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                            -Dsonar.projectKey=taskflow \
+                            -Dsonar.projectName=Taskflow \
+                            -Dsonar.projectVersion=1.0 \
+                            -Dsonar.sources=taskapp \
+                            -Dsonar.exclusions=**/node_modules/**,**/build/**,**/dist/**,**/coverage/**
+                        """
+                    }
+                }
+            }
         }
 
         stage('Database') {
